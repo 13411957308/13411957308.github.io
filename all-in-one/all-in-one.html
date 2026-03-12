@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⏰ 事项提醒 + 客户管理 + 财务报销 + 日历 + 备忘录</title>
+    <!-- 引入 SheetJS 用于解析 Excel (客户管理需要) -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background: #f4f7fb;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .app-container {
+            max-width: 1400px;
+            width: 100%;
+            background: white;
+            border-radius: 32px;
+            box-shadow: 0 20px 40px rgba(0,10,30,0.1);
+            padding: 30px;
+        }
+        /* 导航栏 - 现在五个标签 */
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e2ecf5;
+            padding-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .nav-tab {
+            padding: 10px 20px;
+            border-radius: 40px;
+            font-weight: 600;
+            color: #4a6a85;
+            cursor: pointer;
+            background: #f0f7fe;
+            border: 1px solid transparent;
+            transition: 0.2s;
+            white-space: nowrap;
+        }
+        .nav-tab.active {
+            background: #1e3b5c;
+            color: white;
+            border-color: #1e3b5c;
+        }
+        .page {
+            display: none;
+        }
+        .page.active {
+            display: block;
+        }
+        /* 通用样式 */
+        .sub {
+            color: #546e7a;
+            margin-bottom: 30px;
+            border-left: 4px solid #90caf9;
+            padding-left: 18px;
+            background: #f0f8ff;
+            border-radius: 0 12px 12px 0;
+            line-height: 1.5;
+        }
+        .btn {
+            background: white;
+            border: 1.5px solid #c2d6e6;
+            padding: 12px 24px;
+            border-radius: 40px;
+            font-size: 1rem;
+            font-weight: 550;
+            color: #1e3b5c;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+            white-space: nowrap;
+        }
+        .btn-primary {
+            background: #1e3b5c;
+            border-color: #1e3b5c;
+            color: white;
+            box-shadow: 0 8px 16px -6px rgba(30,59,92,0.25);
+        }
+        .btn-primary:hover {
+            background: #2b4b70;
+            border-color: #2b4b70;
+        }
+        .btn-outline {
+            background: white;
+            border-color: #c2d6e6;
+        }
+        .btn-outline:hover {
+            background: #e9f2fa;
+            border-color: #9bb7d1;
+        }
+        .btn-sm {
+            padding: 8px 16px;
+            font-size: 0.9rem;
+        }
+        .empty-message {
+            padding: 40px 20px;
+            text-align: center;
+            color: #9bb0c0;
+            font-style: italic;
+        }
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 24px;
+            border: 1px solid #dde9f2;
+            margin-top: 20px;
+        }
+        /* 事项提醒页面原有样式 (精简) */
+        .input-card {
+            background: #f9fcff;
+            border-radius: 28px;
+            padding: 24px;
+            margin-bottom: 32px;
+            border: 1px solid #e1eef9;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            gap: 20px;
+        }
+        .input-field {
+            flex: 2 1 260px;
+        }
+        .input-field label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #2c3e50;
+            letter-spacing: 0.3px;
+            margin-bottom: 6px;
+        }
+        .input-field input {
+            width: 100%;
+            padding: 14px 18px;
+            font-size: 1rem;
+            background: white;
+            border: 1.5px solid #cfdfeb;
+            border-radius: 40px;
+            transition: 0.2s;
+            outline: none;
+        }
+        .input-field input:focus {
+            border-color: #3f8cff;
+            box-shadow: 0 0 0 3px rgba(63,140,255,0.15);
+        }
+        .lists-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            margin-bottom: 36px;
+        }
+        .list-panel {
+            flex: 1 1 300px;
+            background: #fbfdff;
+            border-radius: 28px;
+            border: 1px solid #dde9f2;
+            overflow: hidden;
+        }
+        .panel-header {
+            padding: 18px 24px;
+            background: rgba(222, 238, 250, 0.4);
+            border-bottom: 1px solid #d4e2ee;
+            font-weight: 600;
+            font-size: 1.2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .badge {
+            background: white;
+            border-radius: 40px;
+            padding: 4px 14px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #1e3b5c;
+            border: 1px solid #b9d1e5;
+        }
+        .reminder-list {
+            list-style: none;
+            padding: 8px 0;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .list-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            border-bottom: 1px solid #e6f0f7;
+        }
+        .item-info {
+            flex: 1;
+        }
+        .item-title {
+            font-weight: 570;
+            color: #0b2a3e;
+            margin-bottom: 6px;
+        }
+        .item-time {
+            font-size: 0.85rem;
+            color: #2f6491;
+            background: #e2edf7;
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 30px;
+        }
+        .notified-badge {
+            background: #c8e6c9;
+            color: #1f5a2a;
+            padding: 4px 12px;
+            border-radius: 30px;
+            font-size: 0.75rem;
+        }
+        .delete-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #9aaebd;
+            transition: 0.1s;
+        }
+        .delete-btn:hover {
+            color: #c62828;
+        }
+        .logs-section {
+            background: #f4fafd;
+            border-radius: 28px;
+            padding: 20px 28px;
+            border: 1px solid #d3e5f2;
+            margin-top: 20px;
+        }
+        .logs-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .log-entries {
+            background: white;
+            border-radius: 24px;
+            padding: 10px 20px;
+            max-height: 150px;
+            overflow-y: auto;
+            border: 1px solid #c9deed;
+            font-size: 0.9rem;
+        }
+        .log-item {
+            padding: 8px 0;
+            border-bottom: 1px dashed #d4e2ed;
+        }
+        .log-time {
+            color: #0277bd;
+            margin-right: 15px;
+        }
+        .footer-note {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+            font-size: 0.85rem;
+            color: #5c7b93;
+        }
+        .permission-hint {
+            background: #fff8e1;
+            border-radius: 40px;
+            padding: 6px 16px;
+            border: 1px solid #ffe0a3;
+        }
+        /* 客户管理样式 */
+        .customer-form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .form-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .form-item label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 4px;
+        }
+        .form-item input, .form-item select {
+            padding: 12px 16px;
+            border: 1.5px solid #cfdfeb;
+            border-radius: 30px;
+            font-size: 0.9rem;
+            outline: none;
+            transition: 0.2s;
+        }
+        .form-item input:focus, .form-item select:focus {
+            border-color: #3f8cff;
+            box-shadow: 0 0 0 3px rgba(63,140,255,0.15);
+        }
+        .import-area {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            margin: 24px 0;
+            flex-wrap: wrap;
+        }
+        .import-area input[type="file"] {
+            display: none;
+        }
+        .file-label {
+            background: #e9f2fa;
+            padding: 12px 24px;
+            border-radius: 40px;
+            border: 1px dashed #7fa3c2;
+            cursor: pointer;
+            font-weight: 500;
+            color: #1e3b5c;
+        }
+        .file-label:hover {
+            background: #d4e3f0;
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.9rem;
+            color: #2c3e50;
+        }
+        .customer-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 1300px;
+        }
+        .customer-table th {
+            background: #e9f2fa;
+            padding: 14px 12px;
+            font-weight: 600;
+            color: #1f4460;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            border-bottom: 2px solid #c9ddef;
+        }
+        .customer-table td {
+            padding: 14px 12px;
+            border-bottom: 1px solid #e6f0f7;
+            font-size: 0.85rem;
+            vertical-align: middle;
+        }
+        .customer-table tr:hover {
+            background: #f2f9ff;
+        }
+        .action-cell {
+            display: flex;
+            gap: 8px;
+            white-space: nowrap;
+        }
+        .edit-btn, .delete-customer-btn {
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 20px;
+        }
+        .edit-btn:hover {
+            background: #d4e3f0;
+        }
+        .delete-customer-btn:hover {
+            background: #ffe9e9;
+        }
+        /* 财务报销样式 */
+        .finance-form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .finance-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 1000px;
+        }
+        .finance-table th {
+            background: #e9f2fa;
+            padding: 12px 10px;
+            font-weight: 600;
+            color: #1f4460;
+            font-size: 0.85rem;
+            border-bottom: 2px solid #c9ddef;
+        }
+        .finance-table td {
+            padding: 12px 10px;
+            border-bottom: 1px solid #e6f0f7;
+            font-size: 0.85rem;
+        }
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            display: inline-block;
+        }
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-approved { background: #d4edda; color: #155724; }
+        .status-rejected { background: #f8d7da; color: #721c24; }
+        /* 日历样式 */
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 8px;
+            margin-bottom: 30px;
+        }
+        .calendar-weekday {
+            text-align: center;
+            font-weight: 600;
+            color: #2c5779;
+            padding: 10px;
+        }
+        .calendar-day {
+            background: #f0f8ff;
+            border-radius: 12px;
+            padding: 12px 8px;
+            text-align: center;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: 0.1s;
+            min-height: 60px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .calendar-day:hover {
+            background: #d4e3f0;
+            border-color: #7fa3c2;
+        }
+        .calendar-day.empty {
+            background: transparent;
+            cursor: default;
+            border: none;
+        }
+        .calendar-day.empty:hover {
+            background: transparent;
+            border: none;
+        }
+        .day-number {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #1e3b5c;
+        }
+        .day-indicator {
+            font-size: 0.7rem;
+            color: #3f8cff;
+            margin-top: 4px;
+            background: white;
+            padding: 2px 6px;
+            border-radius: 12px;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .calendar-events-list {
+            margin-top: 20px;
+            border-top: 1px solid #d4e2ee;
+            padding-top: 20px;
+        }
+        .event-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: #f9fcff;
+            border-radius: 20px;
+            margin-bottom: 8px;
+            border: 1px solid #e1eef9;
+        }
+        .event-date {
+            font-weight: 600;
+            color: #1e3b5c;
+            min-width: 100px;
+        }
+        .event-text {
+            flex: 1;
+            margin: 0 16px;
+            word-break: break-word;
+        }
+        /* 备忘录样式 */
+        .memo-form {
+            background: #f9fcff;
+            border-radius: 28px;
+            padding: 24px;
+            margin-bottom: 30px;
+            border: 1px solid #e1eef9;
+        }
+        .memo-input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .memo-input-group input, .memo-input-group textarea {
+            padding: 14px 18px;
+            border: 1.5px solid #cfdfeb;
+            border-radius: 30px;
+            font-size: 1rem;
+            outline: none;
+            width: 100%;
+        }
+        .memo-input-group textarea {
+            border-radius: 20px;
+            min-height: 100px;
+            resize: vertical;
+        }
+        .memo-list {
+            background: #fbfdff;
+            border-radius: 28px;
+            border: 1px solid #dde9f2;
+            overflow: hidden;
+        }
+        .memo-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 20px 24px;
+            border-bottom: 1px solid #e6f0f7;
+        }
+        .memo-content {
+            flex: 1;
+        }
+        .memo-title {
+            font-weight: 600;
+            color: #0b2a3e;
+            margin-bottom: 6px;
+            font-size: 1.1rem;
+        }
+        .memo-body {
+            color: #2c3e50;
+            margin-bottom: 8px;
+            white-space: pre-wrap;
+        }
+        .memo-time {
+            font-size: 0.75rem;
+            color: #6c8aa3;
+        }
+        .memo-actions {
+            display: flex;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <!-- 导航栏 (五个标签) -->
+    <div class="nav-tabs">
+        <div class="nav-tab active" data-page="reminder">⏰ 事项提醒</div>
+        <div class="nav-tab" data-page="customer">👥 客户管理</div>
+        <div class="nav-tab" data-page="finance">💰 财务报销</div>
+        <div class="nav-tab" data-page="calendar">📅 日历</div>
+        <div class="nav-tab" data-page="memo">📝 备忘录</div>
+    </div>
+
+    <!-- 事项提醒页面 -->
+    <div id="reminderPage" class="page active">
+        <!-- 内容与之前完全一致，省略内部代码以节省篇幅，实际使用时需完整保留 -->
+        <!-- 为了简洁，这里用注释代替，但实际完整代码中必须包含原reminderPage的所有内容 -->
+        <!-- 请确保此处是完整的提醒页面HTML -->
+        <h1>📌 事项时间提醒 <span>本地存储</span></h1>
+        <div class="sub">⏳ 添加事项和提醒时间，到点后自动移入“已提醒”并记录日志。支持浏览器通知。</div>
+        <!-- 输入区 -->
+        <div class="input-card">
+            <div class="input-field">
+                <label>📝 事项描述</label>
+                <input type="text" id="taskInput" placeholder="例如：喝咖啡、周会..." autocomplete="off">
+            </div>
+            <div class="input-field">
+                <label>⏲️ 提醒时间 (本地时间)</label>
+                <input type="datetime-local" id="datetimeInput">
+            </div>
+            <div class="button-group">
+                <button class="btn btn-primary" id="addBtn">➕ 添加提醒</button>
+                <button class="btn btn-outline" id="requestPermBtn">🔔 允许通知</button>
+                <button class="btn btn-outline btn-sm" id="addExampleBtn">📋 添加示例</button>
+            </div>
+        </div>
+        <!-- 双列表 -->
+        <div class="lists-row">
+            <div class="list-panel">
+                <div class="panel-header"><span>⏳ 待提醒</span><span class="badge" id="pendingCount">0</span></div>
+                <ul class="reminder-list" id="pendingList"><li class="empty-message">✨ 暂无待办事项</li></ul>
+            </div>
+            <div class="list-panel">
+                <div class="panel-header">
+                    <span>✅ 已提醒</span>
+                    <button class="btn-outline btn-sm" id="clearDoneBtn" style="padding:4px 12px;">🧹 清除全部</button>
+                </div>
+                <ul class="reminder-list" id="doneList"><li class="empty-message">📭 暂无已提醒事项</li></ul>
+            </div>
+        </div>
+        <!-- 日志区 -->
+        <div class="logs-section">
+            <div class="logs-header"><h3>📋 提醒历史记录</h3><button class="btn-outline btn-sm" id="clearLogsBtn">🗑️ 清空日志</button></div>
+            <div class="log-entries" id="logContainer"><div class="log-item">📌 还没有提醒日志</div></div>
+            <div class="footer-note">
+                <span>💾 数据自动保存在浏览器中</span>
+                <span class="permission-hint" id="permissionStatus">🔇 通知未授权</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 客户管理页面 -->
+    <div id="customerPage" class="page">
+        <!-- 与之前完全一致，省略内部代码 -->
+        <h1>👥 客户管理系统 </h1>
+        <div class="sub">📇 支持导入Excel，字段包括：序号、渠道商/对接人、企业客户名称、进度、企业资质、营收/职工数/研发人数、主导产品、需求软件、问题/风险/其他、账号密码</div>
+        <!-- 添加/编辑客户表单 -->
+        <div class="customer-card" style="background:#f9fcff; border-radius:28px; padding:24px; border:1px solid #e1eef9;">
+            <div style="margin-bottom: 16px; font-weight: 600; color:#1e3b5c;">📋 客户信息</div>
+            <div class="customer-form-grid">
+                <div class="form-item"><label>序号</label><input type="text" id="cSerialNo" placeholder="例如 001"></div>
+                <div class="form-item"><label>渠道商/对接人</label><input type="text" id="cChannelContact" placeholder="张三"></div>
+                <div class="form-item"><label>企业客户名称</label><input type="text" id="cCompanyName" placeholder="XX科技有限公司"></div>
+                <div class="form-item"><label>进度</label><input type="text" id="cProgress" placeholder="意向跟进中"></div>
+                <div class="form-item"><label>企业资质</label><input type="text" id="cQualification" placeholder="规上工业/高新技术"></div>
+                <div class="form-item"><label>营收/职工数/研发人数</label><input type="text" id="cRevenueStaff" placeholder="5000万/50/10"></div>
+                <div class="form-item"><label>主导产品</label><input type="text" id="cMainProduct" placeholder="工业软件"></div>
+                <div class="form-item"><label>需求软件</label><input type="text" id="cRequiredSoftware" placeholder="ERP, MES"></div>
+                <div class="form-item"><label>问题/风险/其他</label><input type="text" id="cRisks" placeholder="无"></div>
+                <div class="form-item"><label>账号密码</label><input type="text" id="cAccountPassword" placeholder="admin/123456"></div>
+            </div>
+            <div class="button-group" style="margin-top:20px;">
+                <button class="btn btn-primary" id="addCustomerBtn">➕ 添加客户</button>
+                <button class="btn btn-outline" id="clearCustomerFormBtn">🔄 重置表单</button>
+            </div>
+        </div>
+        <!-- Excel 导入区域 -->
+        <div class="import-area">
+            <input type="file" id="excelFile" accept=".xlsx, .xls, .csv">
+            <label for="excelFile" class="file-label">📂 选择 Excel 文件</label>
+            <span style="color:#5c7b93;" id="fileSelected">未选择文件</span>
+            <label class="checkbox-label">
+                <input type="checkbox" id="skipFirstRow" checked> 第一行为标题 (跳过)
+            </label>
+            <button class="btn btn-outline" id="importExcelBtn">📥 导入并追加</button>
+            <div style="margin-left:auto;">
+                <button class="btn-outline btn-sm" id="clearAllCustomersBtn">🗑️ 删除所有客户</button>
+            </div>
+        </div>
+        <!-- 客户列表 -->
+        <div class="table-wrapper">
+            <table class="customer-table" id="customerTable">
+                <thead><tr><th>序号</th><th>渠道商/对接人</th><th>企业客户名称</th><th>进度</th><th>企业资质</th><th>营收/职工数/研发人数</th><th>主导产品</th><th>需求软件</th><th>问题/风险/其他</th><th>账号密码</th><th>操作</th></tr></thead>
+                <tbody id="customerTableBody"><tr><td colspan="11" class="empty-message">暂无客户数据，请添加或导入Excel</td></tr></tbody>
+            </table>
+        </div>
+        <div class="footer-note" style="margin-top:20px;"><span>💾 客户数据保存在浏览器本地 (键名: customer_manager_advanced)</span></div>
+    </div>
+
+    <!-- 财务报销页面 -->
+    <div id="financePage" class="page">
+        <!-- 与之前完全一致，省略内部代码 -->
+        <h1>💰 财务报销管理系统</h1>
+        <div class="sub">📋 管理报销记录：单号、报销人、事由、金额、日期、状态</div>
+        <!-- 添加/编辑报销表单 -->
+        <div style="background:#f9fcff; border-radius:28px; padding:24px; border:1px solid #e1eef9; margin-bottom:30px;">
+            <div style="margin-bottom: 16px; font-weight: 600; color:#1e3b5c;">📋 报销信息</div>
+            <div class="finance-form-grid">
+                <div class="form-item"><label>报销单号</label><input type="text" id="fNumber" placeholder="自动生成" readonly style="background:#f0f7fe;"></div>
+                <div class="form-item"><label>报销人</label><input type="text" id="fPerson" placeholder="张三"></div>
+                <div class="form-item"><label>事由</label><input type="text" id="fReason" placeholder="交通费、办公用品等"></div>
+                <div class="form-item"><label>金额 (元)</label><input type="number" id="fAmount" placeholder="0.00" step="0.01"></div>
+                <div class="form-item"><label>报销日期</label><input type="date" id="fDate"></div>
+                <div class="form-item"><label>状态</label>
+                    <select id="fStatus" style="padding:12px 16px; border:1.5px solid #cfdfeb; border-radius:30px;">
+                        <option value="待审批">待审批</option>
+                        <option value="已通过">已通过</option>
+                        <option value="已拒绝">已拒绝</option>
+                    </select>
+                </div>
+            </div>
+            <div class="button-group" style="margin-top:20px;">
+                <button class="btn btn-primary" id="addFinanceBtn">➕ 添加报销</button>
+                <button class="btn btn-outline" id="clearFinanceFormBtn">🔄 重置表单</button>
+            </div>
+        </div>
+        <!-- 工具条 -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <span style="font-weight:600; color:#1f4460;">📋 报销记录列表</span>
+            <button class="btn-outline btn-sm" id="clearAllFinanceBtn">🗑️ 删除所有记录</button>
+        </div>
+        <!-- 报销列表 -->
+        <div class="table-wrapper">
+            <table class="finance-table" id="financeTable">
+                <thead><tr><th>报销单号</th><th>报销人</th><th>事由</th><th>金额(元)</th><th>报销日期</th><th>状态</th><th>操作</th></tr></thead>
+                <tbody id="financeTableBody"><tr><td colspan="7" class="empty-message">暂无报销记录，请添加</td></tr></tbody>
+            </table>
+        </div>
+        <div class="footer-note" style="margin-top:20px;"><span>💾 报销数据保存在浏览器本地 (键名: finance_records)</span></div>
+    </div>
+
+    <!-- 日历页面 (新增) -->
+    <div id="calendarPage" class="page">
+        <h1>📅 日历日程</h1>
+        <div class="sub">点击日期添加日程，下方列表管理所有日程</div>
+        <div class="calendar-header">
+            <button class="btn btn-outline btn-sm" id="prevMonthBtn">◀ 上月</button>
+            <h2 id="currentMonthYear"></h2>
+            <button class="btn btn-outline btn-sm" id="nextMonthBtn">下月 ▶</button>
+        </div>
+        <div class="calendar-grid" id="calendarGrid">
+            <!-- 星期几标题 -->
+            <div class="calendar-weekday">日</div><div class="calendar-weekday">一</div><div class="calendar-weekday">二</div><div class="calendar-weekday">三</div><div class="calendar-weekday">四</div><div class="calendar-weekday">五</div><div class="calendar-weekday">六</div>
+        </div>
+        <div class="calendar-events-list">
+            <h3 style="margin-bottom:16px;">📌 所有日程</h3>
+            <div id="calendarEventsContainer"></div>
+        </div>
+    </div>
+
+    <!-- 备忘录页面 (新增) -->
+    <div id="memoPage" class="page">
+        <h1>📝 备忘录</h1>
+        <div class="sub">记录您的想法和笔记</div>
+        <div class="memo-form">
+            <div class="memo-input-group">
+                <input type="text" id="memoTitle" placeholder="标题">
+                <textarea id="memoContent" placeholder="内容..."></textarea>
+            </div>
+            <div class="button-group">
+                <button class="btn btn-primary" id="addMemoBtn">➕ 添加笔记</button>
+                <button class="btn btn-outline" id="clearMemoFormBtn">🔄 重置</button>
+            </div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <span style="font-weight:600; color:#1f4460;">📋 笔记列表</span>
+            <button class="btn-outline btn-sm" id="clearAllMemosBtn">🗑️ 删除所有笔记</button>
+        </div>
+        <div class="memo-list" id="memoListContainer">
+            <!-- 动态生成 -->
+        </div>
+        <div class="footer-note" style="margin-top:20px;"><span>💾 备忘录保存在浏览器本地 (键名: memos)</span></div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        // -------------------- 提醒功能模块 (完全保留原样) --------------------
+        const STORAGE_KEY = 'time_reminders_app';
+        let reminders = [];
+        let reminderLogs = [];
+
+        const taskInput = document.getElementById('taskInput');
+        const datetimeInput = document.getElementById('datetimeInput');
+        const addBtn = document.getElementById('addBtn');
+        const pendingList = document.getElementById('pendingList');
+        const doneList = document.getElementById('doneList');
+        const pendingCount = document.getElementById('pendingCount');
+        const logContainer = document.getElementById('logContainer');
+        const requestPermBtn = document.getElementById('requestPermBtn');
+        const addExampleBtn = document.getElementById('addExampleBtn');
+        const clearDoneBtn = document.getElementById('clearDoneBtn');
+        const clearLogsBtn = document.getElementById('clearLogsBtn');
+        const permissionStatus = document.getElementById('permissionStatus');
+
+        function getDefaultDateTime(offsetHours = 1) {
+            const d = new Date(); d.setHours(d.getHours() + offsetHours);
+            const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0'), h = String(d.getHours()).padStart(2,'0'), min = String(d.getMinutes()).padStart(2,'0');
+            return `${y}-${m}-${day}T${h}:${min}`;
+        }
+        function parseRemindTimeStr(str) {
+            if (!str) return new Date(NaN);
+            const parts = str.split(/[T\-:]/);
+            if (parts.length >= 5) {
+                const [y, m, d, h, min] = parts.map(Number);
+                return new Date(y, m-1, d, h, min, 0, 0);
+            }
+            return new Date(NaN);
+        }
+        function saveReminders() { localStorage.setItem(STORAGE_KEY, JSON.stringify(reminders)); }
+        function loadReminders() {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored) { try { reminders = JSON.parse(stored).map(r => ({...r, notified: r.notified||false})); } catch(e){ reminders = []; } }
+            else reminders = [];
+        }
+        function escapeHtml(unsafe) {
+    if (unsafe === null || unsafe === undefined) return '';
+    // 将任何输入转换为字符串
+    const str = String(unsafe);
+    return str.replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#039;');
+}
+        function formatDisplayTime(isoStr) { return isoStr?isoStr.replace('T',' '):''; }
+        function addLog(text) { const now = new Date(), timeStr = now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}); reminderLogs.unshift({timeStr,text}); if(reminderLogs.length>30) reminderLogs.pop(); }
+        function renderReminders() {
+            const pending = reminders.filter(r=>!r.notified), done = reminders.filter(r=>r.notified);
+            pendingList.innerHTML = pending.length? pending.map(i=>`<li class="list-item" data-id="${i.id}"><div class="item-info"><div class="item-title">${escapeHtml(i.text)}</div><span class="item-time">⏱️ ${formatDisplayTime(i.remindTime)}</span></div><div class="item-extra"><button class="delete-btn" data-id="${i.id}">🗑️</button></div></li>`).join('') : '<li class="empty-message">⏰ 暂无待办事项</li>';
+            doneList.innerHTML = done.length? done.map(i=>`<li class="list-item" data-id="${i.id}"><div class="item-info"><div class="item-title">${escapeHtml(i.text)}</div><span class="item-time">⏱️ ${formatDisplayTime(i.remindTime)}</span></div><div class="item-extra"><span class="notified-badge">已提醒</span><button class="delete-btn" data-id="${i.id}">🗑️</button></div></li>`).join('') : '<li class="empty-message">✅ 暂无已提醒事项</li>';
+            pendingCount.textContent = pending.length;
+            logContainer.innerHTML = reminderLogs.length? reminderLogs.map(l=>`<div class="log-item"><span class="log-time">🕒 ${escapeHtml(l.timeStr)}</span> ${escapeHtml(l.text)}</div>`).join('') : '<div class="log-item">📌 还没有提醒日志</div>';
+            permissionStatus.innerHTML = Notification.permission==='granted'?'🔔 通知已授权':'🔇 通知未授权';
+        }
+        function checkRemindersAndNotify() {
+            let changed = false; const now = new Date();
+            for(let i=0;i<reminders.length;i++) {
+                const item = reminders[i]; if(item.notified) continue;
+                const remindDate = parseRemindTimeStr(item.remindTime);
+                if(isNaN(remindDate)) continue;
+                if(now >= remindDate) { item.notified = true; changed = true; addLog(`🔔 事项“${item.text}” 提醒时间到`); if(Notification.permission==='granted') new Notification('⏰ 事项时间提醒',{body:`${item.text} 时间到了！`}); }
+            }
+            if(changed) { saveReminders(); renderReminders(); }
+        }
+        function addReminder(text, remindTime) { if(!text.trim()){alert('请输入事项描述');return false;} if(!remindTime){alert('请选择提醒时间');return false;} reminders.push({id:Date.now()+Math.random().toString(36).substr(2,4), text:text.trim(), remindTime, notified:false}); saveReminders(); renderReminders(); return true; }
+        function deleteReminder(id) { reminders = reminders.filter(r=>r.id!=id); saveReminders(); renderReminders(); }
+        function clearDone() { reminders = reminders.filter(r=>!r.notified); saveReminders(); renderReminders(); }
+
+        // -------------------- 客户管理模块 (完全保留原样) --------------------
+        const CUSTOMER_STORAGE_KEY = 'customer_manager_advanced';
+        let customers = [];
+
+        const cSerialNo = document.getElementById('cSerialNo');
+        const cChannelContact = document.getElementById('cChannelContact');
+        const cCompanyName = document.getElementById('cCompanyName');
+        const cProgress = document.getElementById('cProgress');
+        const cQualification = document.getElementById('cQualification');
+        const cRevenueStaff = document.getElementById('cRevenueStaff');
+        const cMainProduct = document.getElementById('cMainProduct');
+        const cRequiredSoftware = document.getElementById('cRequiredSoftware');
+        const cRisks = document.getElementById('cRisks');
+        const cAccountPassword = document.getElementById('cAccountPassword');
+        const addCustomerBtn = document.getElementById('addCustomerBtn');
+        const clearCustomerFormBtn = document.getElementById('clearCustomerFormBtn');
+        const clearAllCustomersBtn = document.getElementById('clearAllCustomersBtn');
+        const customerTableBody = document.getElementById('customerTableBody');
+        const importExcelBtn = document.getElementById('importExcelBtn');
+        const excelFile = document.getElementById('excelFile');
+        const fileSelected = document.getElementById('fileSelected');
+        const skipFirstRow = document.getElementById('skipFirstRow');
+
+        let editingCustomerId = null;
+
+        function loadCustomers() {
+            const stored = localStorage.getItem(CUSTOMER_STORAGE_KEY);
+            if (stored) {
+                try {
+                    customers = JSON.parse(stored);
+                    customers = customers.map(c => ({
+                        id: c.id || Date.now() + Math.random().toString(36).substr(2,6),
+                        serialNo: c.serialNo || '',
+                        channelContact: c.channelContact || '',
+                        companyName: c.companyName || '',
+                        progress: c.progress || '',
+                        qualification: c.qualification || '',
+                        revenueStaff: c.revenueStaff || '',
+                        mainProduct: c.mainProduct || '',
+                        requiredSoftware: c.requiredSoftware || '',
+                        risks: c.risks || '',
+                        accountPassword: c.accountPassword || ''
+                    }));
+                } catch (e) {
+                    customers = [];
+                }
+            } else {
+                customers = [];
+            }
+        }
+        function saveCustomers() { localStorage.setItem(CUSTOMER_STORAGE_KEY, JSON.stringify(customers)); }
+        function renderCustomers() {
+            if (customers.length === 0) { customerTableBody.innerHTML = '<tr><td colspan="11" class="empty-message">暂无客户数据，请添加或导入Excel</td></tr>'; return; }
+            let html = '';
+            customers.forEach(c => {
+                html += `<tr>
+                    <td>${escapeHtml(c.serialNo)}</td><td>${escapeHtml(c.channelContact)}</td><td>${escapeHtml(c.companyName)}</td>
+                    <td>${escapeHtml(c.progress)}</td><td>${escapeHtml(c.qualification)}</td><td>${escapeHtml(c.revenueStaff)}</td>
+                    <td>${escapeHtml(c.mainProduct)}</td><td>${escapeHtml(c.requiredSoftware)}</td><td>${escapeHtml(c.risks)}</td>
+                    <td>${escapeHtml(c.accountPassword)}</td>
+                    <td class="action-cell"><button class="edit-btn" data-id="${c.id}">✏️</button><button class="delete-customer-btn" data-id="${c.id}">🗑️</button></td>
+                </tr>`;
+            });
+            customerTableBody.innerHTML = html;
+        }
+        function clearCustomerForm() {
+            cSerialNo.value = ''; cChannelContact.value = ''; cCompanyName.value = ''; cProgress.value = ''; cQualification.value = '';
+            cRevenueStaff.value = ''; cMainProduct.value = ''; cRequiredSoftware.value = ''; cRisks.value = ''; cAccountPassword.value = '';
+            editingCustomerId = null; addCustomerBtn.textContent = '➕ 添加客户';
+        }
+        function addOrUpdateCustomer() {
+            if (!cCompanyName.value.trim()) { alert('企业客户名称不能为空'); return; }
+            if (editingCustomerId) {
+                const index = customers.findIndex(c => c.id == editingCustomerId);
+                if (index !== -1) {
+                    customers[index] = { ...customers[index], serialNo: cSerialNo.value, channelContact: cChannelContact.value, companyName: cCompanyName.value, progress: cProgress.value, qualification: cQualification.value, revenueStaff: cRevenueStaff.value, mainProduct: cMainProduct.value, requiredSoftware: cRequiredSoftware.value, risks: cRisks.value, accountPassword: cAccountPassword.value };
+                }
+                editingCustomerId = null; addCustomerBtn.textContent = '➕ 添加客户';
+            } else {
+                customers.push({ id: Date.now() + Math.random().toString(36).substr(2,8), serialNo: cSerialNo.value, channelContact: cChannelContact.value, companyName: cCompanyName.value, progress: cProgress.value, qualification: cQualification.value, revenueStaff: cRevenueStaff.value, mainProduct: cMainProduct.value, requiredSoftware: cRequiredSoftware.value, risks: cRisks.value, accountPassword: cAccountPassword.value });
+            }
+            saveCustomers(); renderCustomers(); clearCustomerForm();
+        }
+        function deleteCustomer(id) { customers = customers.filter(c => c.id != id); saveCustomers(); renderCustomers(); if (editingCustomerId == id) clearCustomerForm(); }
+        function editCustomer(id) {
+            const c = customers.find(c => c.id == id); if (!c) return;
+            cSerialNo.value = c.serialNo || ''; cChannelContact.value = c.channelContact || ''; cCompanyName.value = c.companyName || ''; cProgress.value = c.progress || ''; cQualification.value = c.qualification || ''; cRevenueStaff.value = c.revenueStaff || ''; cMainProduct.value = c.mainProduct || ''; cRequiredSoftware.value = c.requiredSoftware || ''; cRisks.value = c.risks || ''; cAccountPassword.value = c.accountPassword || '';
+            editingCustomerId = id; addCustomerBtn.textContent = '💾 更新客户';
+        }
+        function clearAllCustomers() { if (confirm('确定要删除所有客户吗？')) { customers = []; saveCustomers(); renderCustomers(); clearCustomerForm(); } }
+        function importFromExcel() {
+            const file = excelFile.files[0]; if (!file) { alert('请先选择一个Excel文件'); return; }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1, defval: '' });
+                    if (rows.length === 0) { alert('Excel 文件无数据'); return; }
+                    const skipHeader = skipFirstRow.checked; const startRow = skipHeader ? 1 : 0; let addedCount = 0;
+                    for (let i = startRow; i < rows.length; i++) {
+                        const row = rows[i]; if (!row || row.length === 0) continue;
+                        const companyName = row[2] ? String(row[2]).trim() : '';
+                        if (!companyName) continue;
+                        customers.push({ id: Date.now() + Math.random().toString(36).substr(2,8) + i, serialNo: row[0]?String(row[0]).trim():'', channelContact: row[1]?String(row[1]).trim():'', companyName, progress: row[3]?String(row[3]).trim():'', qualification: row[4]?String(row[4]).trim():'', revenueStaff: row[5]?String(row[5]).trim():'', mainProduct: row[6]?String(row[6]).trim():'', requiredSoftware: row[7]?String(row[7]).trim():'', risks: row[8]?String(row[8]).trim():'', accountPassword: row[9]?String(row[9]).trim():'' });
+                        addedCount++;
+                    }
+                    if (addedCount > 0) { saveCustomers(); renderCustomers(); alert(`成功导入 ${addedCount} 条客户数据`); excelFile.value = ''; fileSelected.textContent = '未选择文件'; }
+                    else { alert('未导入任何数据'); }
+                } catch (error) { alert('解析Excel失败'); }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+        excelFile.addEventListener('change', function() { fileSelected.textContent = this.files.length ? this.files[0].name : '未选择文件'; });
+
+        // -------------------- 财务报销模块 --------------------
+        const FINANCE_STORAGE_KEY = 'finance_records';
+        let finances = [];
+
+        const fNumber = document.getElementById('fNumber');
+        const fPerson = document.getElementById('fPerson');
+        const fReason = document.getElementById('fReason');
+        const fAmount = document.getElementById('fAmount');
+        const fDate = document.getElementById('fDate');
+        const fStatus = document.getElementById('fStatus');
+        const addFinanceBtn = document.getElementById('addFinanceBtn');
+        const clearFinanceFormBtn = document.getElementById('clearFinanceFormBtn');
+        const clearAllFinanceBtn = document.getElementById('clearAllFinanceBtn');
+        const financeTableBody = document.getElementById('financeTableBody');
+
+        let editingFinanceId = null;
+
+        function loadFinances() {
+            const stored = localStorage.getItem(FINANCE_STORAGE_KEY);
+            if (stored) {
+                try {
+                    finances = JSON.parse(stored);
+                    finances = finances.map(f => ({
+                        id: f.id || Date.now() + Math.random().toString(36).substr(2,6),
+                        number: f.number || '',
+                        person: f.person || '',
+                        reason: f.reason || '',
+                        amount: f.amount || 0,
+                        date: f.date || '',
+                        status: f.status || '待审批'
+                    }));
+                } catch (e) {
+                    finances = [];
+                }
+            } else {
+                finances = [];
+            }
+        }
+        function saveFinances() { localStorage.setItem(FINANCE_STORAGE_KEY, JSON.stringify(finances)); }
+        function generateFinanceNumber() {
+            const prefix = 'REQ-';
+            const maxNum = finances.reduce((max, f) => {
+                const num = parseInt(f.number.replace(prefix, ''), 10);
+                return isNaN(num) ? max : Math.max(max, num);
+            }, 0);
+            return prefix + String(maxNum + 1).padStart(4, '0');
+        }
+        function renderFinances() {
+            if (finances.length === 0) { financeTableBody.innerHTML = '<tr><td colspan="7" class="empty-message">暂无报销记录，请添加</td></tr>'; return; }
+            let html = '';
+            finances.forEach(f => {
+                const statusClass = f.status === '待审批' ? 'status-pending' : (f.status === '已通过' ? 'status-approved' : 'status-rejected');
+                html += `<tr>
+                    <td>${escapeHtml(f.number)}</td><td>${escapeHtml(f.person)}</td><td>${escapeHtml(f.reason)}</td>
+                    <td>${escapeHtml(f.amount)}</td><td>${escapeHtml(f.date)}</td>
+                    <td><span class="status-badge ${statusClass}">${escapeHtml(f.status)}</span></td>
+                    <td class="action-cell"><button class="edit-btn" data-id="${f.id}">✏️</button><button class="delete-customer-btn" data-id="${f.id}">🗑️</button></td>
+                </tr>`;
+            });
+            financeTableBody.innerHTML = html;
+        }
+        function clearFinanceForm() {
+            fNumber.value = '自动生成';
+            fPerson.value = ''; fReason.value = ''; fAmount.value = ''; fDate.value = ''; fStatus.value = '待审批';
+            editingFinanceId = null; addFinanceBtn.textContent = '➕ 添加报销';
+        }
+        function addOrUpdateFinance() {
+            const person = fPerson.value.trim(); const reason = fReason.value.trim(); const amount = parseFloat(fAmount.value); const date = fDate.value; const status = fStatus.value;
+            if (!person) { alert('请输入报销人'); return; }
+            if (!reason) { alert('请输入事由'); return; }
+            if (isNaN(amount) || amount <= 0) { alert('请输入有效的金额'); return; }
+            if (!date) { alert('请选择报销日期'); return; }
+            if (editingFinanceId) {
+                const index = finances.findIndex(f => f.id == editingFinanceId);
+                if (index !== -1) { finances[index] = { ...finances[index], person, reason, amount, date, status }; }
+                editingFinanceId = null; addFinanceBtn.textContent = '➕ 添加报销';
+            } else {
+                finances.push({ id: Date.now() + Math.random().toString(36).substr(2,8), number: generateFinanceNumber(), person, reason, amount, date, status });
+            }
+            saveFinances(); renderFinances(); clearFinanceForm();
+        }
+        function deleteFinance(id) { finances = finances.filter(f => f.id != id); saveFinances(); renderFinances(); if (editingFinanceId == id) clearFinanceForm(); }
+        function editFinance(id) {
+            const f = finances.find(f => f.id == id); if (!f) return;
+            fNumber.value = f.number; fPerson.value = f.person || ''; fReason.value = f.reason || ''; fAmount.value = f.amount || ''; fDate.value = f.date || ''; fStatus.value = f.status || '待审批';
+            editingFinanceId = id; addFinanceBtn.textContent = '💾 更新报销';
+        }
+        function clearAllFinances() { if (confirm('确定要删除所有报销记录吗？')) { finances = []; saveFinances(); renderFinances(); clearFinanceForm(); } }
+
+        // -------------------- 日历模块 (新增) --------------------
+        const CALENDAR_STORAGE_KEY = 'calendar_events';
+        let calendarEvents = [];
+        let currentYear = new Date().getFullYear();
+        let currentMonth = new Date().getMonth(); // 0-11
+
+        const calendarGrid = document.getElementById('calendarGrid');
+        const currentMonthYearEl = document.getElementById('currentMonthYear');
+        const prevMonthBtn = document.getElementById('prevMonthBtn');
+        const nextMonthBtn = document.getElementById('nextMonthBtn');
+        const calendarEventsContainer = document.getElementById('calendarEventsContainer');
+
+        function loadCalendarEvents() {
+            const stored = localStorage.getItem(CALENDAR_STORAGE_KEY);
+            if (stored) {
+                try {
+                    calendarEvents = JSON.parse(stored);
+                } catch (e) {
+                    calendarEvents = [];
+                }
+            } else {
+                calendarEvents = [];
+            }
+        }
+        function saveCalendarEvents() {
+            localStorage.setItem(CALENDAR_STORAGE_KEY, JSON.stringify(calendarEvents));
+        }
+
+        function renderCalendar() {
+            // 更新标题
+            const monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+            currentMonthYearEl.textContent = `${currentYear}年 ${monthNames[currentMonth]}`;
+
+            // 获取当月第一天是星期几 (0=星期日)
+            const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+            // 获取当月总天数
+            const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+            // 清空日历网格，保留星期标题
+            while (calendarGrid.children.length > 7) {
+                calendarGrid.removeChild(calendarGrid.lastChild);
+            }
+
+            // 填充空白格 (第一天之前的空格)
+            for (let i = 0; i < firstDay; i++) {
+                const emptyDiv = document.createElement('div');
+                emptyDiv.className = 'calendar-day empty';
+                calendarGrid.appendChild(emptyDiv);
+            }
+
+            // 填充日期
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dayDiv = document.createElement('div');
+                dayDiv.className = 'calendar-day';
+                dayDiv.setAttribute('data-date', `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+                dayDiv.innerHTML = `<span class="day-number">${d}</span>`;
+
+                // 检查是否有事件
+                const dateStr = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                const eventsForDay = calendarEvents.filter(e => e.date === dateStr);
+                if (eventsForDay.length > 0) {
+                    const indicator = document.createElement('span');
+                    indicator.className = 'day-indicator';
+                    indicator.textContent = eventsForDay.length > 1 ? `${eventsForDay.length}个日程` : '📌';
+                    dayDiv.appendChild(indicator);
+                }
+
+                dayDiv.addEventListener('click', function(e) {
+                    const date = this.getAttribute('data-date');
+                    const text = prompt(`请输入 ${date} 的日程内容：`);
+                    if (text && text.trim()) {
+                        // 添加新事件
+                        calendarEvents.push({
+                            id: Date.now() + Math.random().toString(36).substr(2,6),
+                            date: date,
+                            text: text.trim()
+                        });
+                        saveCalendarEvents();
+                        renderCalendar();
+                        renderCalendarEventsList();
+                    }
+                });
+                calendarGrid.appendChild(dayDiv);
+            }
+
+            // 补全最后一周的空格 (可选，为了美观可以补到周六)
+            const totalCells = firstDay + daysInMonth;
+            const remaining = totalCells % 7;
+            if (remaining !== 0) {
+                for (let i = 0; i < 7 - remaining; i++) {
+                    const emptyDiv = document.createElement('div');
+                    emptyDiv.className = 'calendar-day empty';
+                    calendarGrid.appendChild(emptyDiv);
+                }
+            }
+        }
+
+        function renderCalendarEventsList() {
+            if (calendarEvents.length === 0) {
+                calendarEventsContainer.innerHTML = '<div class="empty-message">暂无日程</div>';
+                return;
+            }
+            // 按日期排序
+            const sorted = [...calendarEvents].sort((a,b) => a.date.localeCompare(b.date));
+            let html = '';
+            sorted.forEach(ev => {
+                html += `<div class="event-item" data-id="${ev.id}">
+                    <span class="event-date">${ev.date}</span>
+                    <span class="event-text">${escapeHtml(ev.text)}</span>
+                    <div class="action-cell">
+                        <button class="edit-btn" data-id="${ev.id}" title="编辑">✏️</button>
+                        <button class="delete-customer-btn" data-id="${ev.id}" title="删除">🗑️</button>
+                    </div>
+                </div>`;
+            });
+            calendarEventsContainer.innerHTML = html;
+        }
+
+        function deleteCalendarEvent(id) {
+            calendarEvents = calendarEvents.filter(e => e.id != id);
+            saveCalendarEvents();
+            renderCalendar();
+            renderCalendarEventsList();
+        }
+
+        function editCalendarEvent(id) {
+            const ev = calendarEvents.find(e => e.id == id);
+            if (!ev) return;
+            const newText = prompt('修改日程内容：', ev.text);
+            if (newText !== null && newText.trim()) {
+                ev.text = newText.trim();
+                saveCalendarEvents();
+                renderCalendar();
+                renderCalendarEventsList();
+            }
+        }
+
+        // 月份切换
+        prevMonthBtn.addEventListener('click', () => {
+            if (currentMonth === 0) {
+                currentMonth = 11;
+                currentYear--;
+            } else {
+                currentMonth--;
+            }
+            renderCalendar();
+        });
+        nextMonthBtn.addEventListener('click', () => {
+            if (currentMonth === 11) {
+                currentMonth = 0;
+                currentYear++;
+            } else {
+                currentMonth++;
+            }
+            renderCalendar();
+        });
+
+        // 事件委托处理日程列表中的编辑/删除
+        calendarEventsContainer.addEventListener('click', (e) => {
+            const target = e.target;
+            if (target.classList.contains('edit-btn')) {
+                const id = target.getAttribute('data-id');
+                if (id) editCalendarEvent(id);
+            } else if (target.classList.contains('delete-customer-btn')) {
+                const id = target.getAttribute('data-id');
+                if (id) deleteCalendarEvent(id);
+            }
+        });
+
+        // -------------------- 备忘录模块 (新增) --------------------
+        const MEMO_STORAGE_KEY = 'memos';
+        let memos = [];
+
+        const memoTitle = document.getElementById('memoTitle');
+        const memoContent = document.getElementById('memoContent');
+        const addMemoBtn = document.getElementById('addMemoBtn');
+        const clearMemoFormBtn = document.getElementById('clearMemoFormBtn');
+        const clearAllMemosBtn = document.getElementById('clearAllMemosBtn');
+        const memoListContainer = document.getElementById('memoListContainer');
+
+        let editingMemoId = null;
+
+        function loadMemos() {
+            const stored = localStorage.getItem(MEMO_STORAGE_KEY);
+            if (stored) {
+                try {
+                    memos = JSON.parse(stored);
+                } catch (e) {
+                    memos = [];
+                }
+            } else {
+                memos = [];
+            }
+        }
+        function saveMemos() { localStorage.setItem(MEMO_STORAGE_KEY, JSON.stringify(memos)); }
+
+        function renderMemos() {
+            if (memos.length === 0) {
+                memoListContainer.innerHTML = '<div class="empty-message">暂无笔记</div>';
+                return;
+            }
+            let html = '';
+            // 按创建时间倒序
+            const sorted = [...memos].sort((a,b) => b.createdAt - a.createdAt);
+            sorted.forEach(m => {
+                const date = new Date(m.createdAt).toLocaleString();
+                html += `<div class="memo-item" data-id="${m.id}">
+                    <div class="memo-content">
+                        <div class="memo-title">${escapeHtml(m.title)}</div>
+                        <div class="memo-body">${escapeHtml(m.content).replace(/\n/g,'<br>')}</div>
+                        <div class="memo-time">${date}</div>
+                    </div>
+                    <div class="memo-actions">
+                        <button class="edit-btn" data-id="${m.id}" title="编辑">✏️</button>
+                        <button class="delete-customer-btn" data-id="${m.id}" title="删除">🗑️</button>
+                    </div>
+                </div>`;
+            });
+            memoListContainer.innerHTML = html;
+        }
+
+        function clearMemoForm() {
+            memoTitle.value = '';
+            memoContent.value = '';
+            editingMemoId = null;
+            addMemoBtn.textContent = '➕ 添加笔记';
+        }
+
+        function addOrUpdateMemo() {
+            const title = memoTitle.value.trim();
+            const content = memoContent.value.trim();
+            if (!title && !content) { alert('标题和内容不能同时为空'); return; }
+            if (editingMemoId) {
+                const index = memos.findIndex(m => m.id == editingMemoId);
+                if (index !== -1) {
+                    memos[index] = { ...memos[index], title, content };
+                }
+                editingMemoId = null;
+                addMemoBtn.textContent = '➕ 添加笔记';
+            } else {
+                memos.push({
+                    id: Date.now() + Math.random().toString(36).substr(2,8),
+                    title,
+                    content,
+                    createdAt: Date.now()
+                });
+            }
+            saveMemos();
+            renderMemos();
+            clearMemoForm();
+        }
+
+        function deleteMemo(id) {
+            memos = memos.filter(m => m.id != id);
+            saveMemos();
+            renderMemos();
+            if (editingMemoId == id) clearMemoForm();
+        }
+
+        function editMemo(id) {
+            const m = memos.find(m => m.id == id);
+            if (!m) return;
+            memoTitle.value = m.title || '';
+            memoContent.value = m.content || '';
+            editingMemoId = id;
+            addMemoBtn.textContent = '💾 更新笔记';
+        }
+
+        function clearAllMemos() {
+            if (confirm('确定要删除所有笔记吗？')) {
+                memos = [];
+                saveMemos();
+                renderMemos();
+                clearMemoForm();
+            }
+        }
+
+        // 事件委托处理备忘录列表中的编辑/删除
+        memoListContainer.addEventListener('click', (e) => {
+            const target = e.target;
+            if (target.classList.contains('edit-btn')) {
+                const id = target.getAttribute('data-id');
+                if (id) editMemo(id);
+            } else if (target.classList.contains('delete-customer-btn')) {
+                const id = target.getAttribute('data-id');
+                if (id) deleteMemo(id);
+            }
+        });
+
+        // -------------------- 页面切换 (五个页面) --------------------
+        const tabs = document.querySelectorAll('.nav-tab');
+        const pages = {
+            reminder: document.getElementById('reminderPage'),
+            customer: document.getElementById('customerPage'),
+            finance: document.getElementById('financePage'),
+            calendar: document.getElementById('calendarPage'),
+            memo: document.getElementById('memoPage')
+        };
+        function switchPage(pageId) {
+            Object.keys(pages).forEach(id => pages[id].classList.remove('active'));
+            pages[pageId].classList.add('active');
+            tabs.forEach(tab => {
+                const tabPage = tab.getAttribute('data-page');
+                if (tabPage === pageId) tab.classList.add('active');
+                else tab.classList.remove('active');
+            });
+        }
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => switchPage(tab.getAttribute('data-page')));
+        });
+
+        // -------------------- 初始化所有模块 --------------------
+        function init() {
+            // 提醒模块
+            loadReminders();
+            datetimeInput.value = getDefaultDateTime(1);
+            renderReminders();
+            setInterval(checkRemindersAndNotify, 1000);
+
+            // 客户模块
+            loadCustomers();
+            renderCustomers();
+
+            // 财务模块
+            loadFinances();
+            renderFinances();
+
+            // 日历模块
+            loadCalendarEvents();
+            renderCalendar();
+            renderCalendarEventsList();
+
+            // 备忘录模块
+            loadMemos();
+            renderMemos();
+
+            // 提醒事件监听
+            addBtn.addEventListener('click', () => {
+                addReminder(taskInput.value, datetimeInput.value);
+                if (taskInput.value.trim()) { taskInput.value = ''; datetimeInput.value = getDefaultDateTime(1); }
+            });
+            pendingList.addEventListener('click', (e) => { const btn = e.target.closest('.delete-btn'); if(btn) deleteReminder(btn.getAttribute('data-id')); });
+            doneList.addEventListener('click', (e) => { const btn = e.target.closest('.delete-btn'); if(btn) deleteReminder(btn.getAttribute('data-id')); });
+            clearDoneBtn.addEventListener('click', clearDone);
+            clearLogsBtn.addEventListener('click', () => { reminderLogs = []; renderReminders(); });
+            requestPermBtn.addEventListener('click', () => {
+                if (!('Notification' in window)) { alert('浏览器不支持通知'); return; }
+                if (Notification.permission === 'granted') { alert('已获得权限'); }
+                else if (Notification.permission !== 'denied') {
+                    Notification.requestPermission().then(perm => {
+                        if (perm === 'granted') new Notification('✅ 通知已开启');
+                        renderReminders();
+                    });
+                } else { alert('通知权限已被浏览器禁止'); }
+            });
+            addExampleBtn.addEventListener('click', () => {
+                const now = new Date();
+                const later1 = new Date(now.getTime() + 2 * 60000);
+                const later2 = new Date(now.getTime() + 65 * 60000);
+                const fmt = (d) => { const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0'), h=String(d.getHours()).padStart(2,'0'), min=String(d.getMinutes()).padStart(2,'0'); return `${y}-${m}-${day}T${h}:${min}`; };
+                addReminder('☕ 喝咖啡 (2分钟后)', fmt(later1));
+                addReminder('📞 项目例会 (1小时后)', fmt(later2));
+            });
+
+            // 客户事件监听
+            addCustomerBtn.addEventListener('click', addOrUpdateCustomer);
+            clearCustomerFormBtn.addEventListener('click', clearCustomerForm);
+            clearAllCustomersBtn.addEventListener('click', clearAllCustomers);
+            importExcelBtn.addEventListener('click', importFromExcel);
+            customerTableBody.addEventListener('click', (e) => {
+                const target = e.target;
+                if (target.classList.contains('edit-btn')) { const id = target.getAttribute('data-id'); if(id) editCustomer(id); }
+                else if (target.classList.contains('delete-customer-btn')) { const id = target.getAttribute('data-id'); if(id) deleteCustomer(id); }
+            });
+
+            // 财务事件监听
+            addFinanceBtn.addEventListener('click', addOrUpdateFinance);
+            clearFinanceFormBtn.addEventListener('click', clearFinanceForm);
+            clearAllFinanceBtn.addEventListener('click', clearAllFinances);
+            financeTableBody.addEventListener('click', (e) => {
+                const target = e.target;
+                if (target.classList.contains('edit-btn')) { const id = target.getAttribute('data-id'); if(id) editFinance(id); }
+                else if (target.classList.contains('delete-customer-btn')) { const id = target.getAttribute('data-id'); if(id) deleteFinance(id); }
+            });
+
+            // 备忘录事件监听
+            addMemoBtn.addEventListener('click', addOrUpdateMemo);
+            clearMemoFormBtn.addEventListener('click', clearMemoForm);
+            clearAllMemosBtn.addEventListener('click', clearAllMemos);
+        }
+
+        init();
+    })();
+</script>
+</body>
+</html>
